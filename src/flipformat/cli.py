@@ -18,14 +18,14 @@ import sys
 
 from flipformat.flip_file import FlipFile
 from flipformat.autocrop import autocrop_pair, ALGORITHM_ID
+from flipformat.image_io import open_image
 
 
 def cmd_create(args):
     ff = FlipFile()
 
-    from PIL import Image
-    front_img = Image.open(args.front)
-    back_img = Image.open(args.back)
+    front_img = open_image(args.front)
+    back_img = open_image(args.back)
 
     if not args.no_crop:
         print("Auto-cropping images...")
