@@ -19,6 +19,7 @@ import sys
 from flipformat.flip_file import FlipFile
 from flipformat.autocrop import autocrop_pair, ALGORITHM_ID
 from flipformat.image_io import open_image
+from flipformat.smartmeta import auto_label, estimate_size_and_type
 
 
 def cmd_create(args):
@@ -49,7 +50,28 @@ def cmd_create(args):
 
     ff.set_front(front_img)
     ff.set_back(back_img)
-    ff.label = args.label or ""
+
+    # Smart metadata: auto-label from OCR if no label provided
+    if args.label:
+        ff.label = args.label
+    else:
+        print("Detecting label from text...")
+        label = auto_label(front_img)
+        ff.label = label
+        if label:
+            print(f"  Auto-label: {label}")
+        else:
+            print("  No text detected — label left empty")
+
+    # Size and type estimation
+    size_inches, size_name, obj_type = estimate_size_and_type(front_img.width, front_img.height)
+    ff.object_type = obj_type
+    ff.size_name = size_name
+    ff.size_inches = size_inches
+    if size_inches:
+        print(f"  Detected: {obj_type} ({size_name}) — {size_inches[0]:.2f}\" x {size_inches[1]:.2f}\"")
+    else:
+        print(f"  Detected: {obj_type} ({size_name})")
 
     quality = args.quality if args.quality else 85
     ff.save(args.output, quality=quality)

@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FlipCapture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #09090b;
+  --surface: #18181b;
+  --surface-2: #27272a;
+  --border: #3f3f46;
+  --border-subtle: #27272a;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-glow: rgba(99,102,241,0.15);
+  --text: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { display: flex; flex-direction: column; min-height: 100dvh; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--border-subtle);
+  background: rgba(9,9,11,0.85); backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;
+}
+
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.03em; }
+.logo-icon { width: 30px; height: 30px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.logo-icon svg { width: 16px; height: 16px; stroke: white; fill: none; stroke-width: 2; }
+
+main { flex: 1; display: flex; flex-direction: column; }
+
+/* ---- Steps indicator ---- */
+.steps { display: flex; justify-content: center; gap: 8px; padding: 20px 16px 12px; }
+.step-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--surface-2); border: 2px solid var(--border);
+  transition: all 0.3s;
+}
+.step-dot.active { background: var(--accent); border-color: var(--accent); transform: scale(1.2); }
+.step-dot.done { background: var(--success); border-color: var(--success); }
+
+.step-label {
+  text-align: center; padding: 0 16px 16px; font-size: 0.85rem; color: var(--text-secondary);
+}
+.step-label strong { color: var(--text); font-weight: 600; }
+
+/* ---- Camera section ---- */
+.camera-section {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 16px; gap: 20px;
+}
+
+.camera-container {
+  position: relative; width: 100%; max-width: 500px;
+  border-radius: var(--radius); overflow: hidden;
+  background: #000; aspect-ratio: 3/4;
+}
+
+.camera-container video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+
+/* Card-shaped guide overlay */
+.guide-overlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2;
+}
+.guide-rect {
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 72%; aspect-ratio: 1.6;
+  border: 2px solid rgba(255,255,255,0.5);
+  border-radius: 12px;
+  box-shadow: 0 0 0 2000px rgba(0,0,0,0.35);
+}
+.guide-text {
+  position: absolute; bottom: 12%; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  padding: 6px 16px; border-radius: 20px;
+  font-size: 0.75rem; color: rgba(255,255,255,0.85); white-space: nowrap;
+}
+
+.shutter-row {
+  display: flex; align-items: center; justify-content: center; gap: 24px;
+  padding: 8px 0 16px;
+}
+
+.shutter-btn {
+  width: 72px; height: 72px; border-radius: 50%; border: 4px solid white;
+  background: transparent; cursor: pointer; position: relative;
+  transition: all 0.15s;
+}
+.shutter-btn::after {
+  content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: white; transition: all 0.15s;
+}
+.shutter-btn:active { transform: scale(0.92); }
+.shutter-btn:active::after { background: var(--accent); }
+
+.switch-cam-btn {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s;
+}
+.switch-cam-btn:hover { background: var(--surface-2); }
+.switch-cam-btn svg { width: 20px; height: 20px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; }
+
+/* ---- Preview section ---- */
+.preview-section {
+  display: none; flex: 1; flex-direction: column;
+  align-items: center; padding: 16px; gap: 16px;
+}
+.preview-section.active { display: flex; }
+
+.preview-card {
+  width: 100%; max-width: 360px; border-radius: var(--radius);
+  overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  border: 1px solid var(--border-subtle);
+}
+.preview-card img { width: 100%; display: block; }
+.preview-card-label {
+  padding: 10px 14px; background: var(--surface);
+  font-size: 0.8rem; color: var(--text-secondary); text-align: center;
+}
+
+.preview-pair { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+
+/* ---- Result section ---- */
+.result-section {
+  display: none; flex: 1; flex-direction: column;
+  align-items: center; justify-content: center; padding: 24px; gap: 24px;
+}
+.result-section.active { display: flex; }
+
+.result-icon {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: rgba(34,197,94,0.12); display: flex;
+  align-items: center; justify-content: center;
+}
+.result-icon svg { width: 40px; height: 40px; stroke: var(--success); fill: none; stroke-width: 2; }
+
+.result-text { text-align: center; }
+.result-text h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 6px; }
+.result-text p { color: var(--text-secondary); font-size: 0.9rem; }
+
+/* ---- Shared buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 28px; border: none; border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 0.9rem; font-weight: 500;
+  cursor: pointer; transition: all var(--transition); white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:active { transform: scale(0.97); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface); color: var(--text); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover { background: #16a34a; }
+
+.btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+/* ---- Retake bar ---- */
+.retake-bar {
+  display: flex; align-items: center; gap: 12px; padding: 8px 0;
+}
+
+/* ---- Upload fallback ---- */
+.upload-section {
+  display: none; flex: 1; flex-direction: column;
+  align-items: center; justify-content: center; padding: 24px; gap: 24px;
+}
+.upload-section.active { display: flex; }
+.upload-section p { color: var(--text-secondary); font-size: 0.9rem; text-align: center; max-width: 360px; }
+
+/* ---- Toast ---- */
+.toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1000; }
+.toast {
+  padding: 10px 20px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4); animation: toastIn 0.3s ease-out;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ---- Spinner ---- */
+.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Responsive ---- */
+@media (max-width: 640px) {
+  .camera-container { aspect-ratio: 3/4; max-width: 100%; border-radius: 0; }
+  .preview-pair { flex-direction: column; align-items: center; }
+  .preview-card { max-width: 280px; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+      <span>FlipCapture</span>
+    </div>
+    <a href="index.html" style="color:var(--text-muted);font-size:0.8rem;text-decoration:none;">Open Viewer</a>
+  </header>
+
+  <main>
+    <!-- Step dots -->
+    <div class="steps">
+      <div class="step-dot active" id="dot-1"></div>
+      <div class="step-dot" id="dot-2"></div>
+      <div class="step-dot" id="dot-3"></div>
+    </div>
+
+    <!-- STEP 1 & 2: Camera -->
+    <section class="camera-section" id="section-camera">
+      <p class="step-label" id="camera-label"><strong>Step 1:</strong> Photograph the <strong>front</strong></p>
+
+      <div class="camera-container" id="camera-container">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="guide-overlay">
+          <div class="guide-rect"></div>
+          <div class="guide-text" id="guide-text">Align card within the frame</div>
+        </div>
+      </div>
+
+      <div class="shutter-row">
+        <div style="width:44px"></div>
+        <button class="shutter-btn" id="btn-shutter" title="Take photo"></button>
+        <button class="switch-cam-btn" id="btn-switch-cam" title="Switch camera">
+          <svg viewBox="0 0 24 24"><path d="M20 16v4a2 2 0 01-2 2h-4"/><path d="M14 22l4-4-4-4M4 8V4a2 2 0 012-2h4"/><path d="M10 2L6 6l4 4"/></svg>
+        </button>
+      </div>
+
+      <div class="retake-bar" id="retake-bar" style="display:none;">
+        <button class="btn btn-ghost" id="btn-retake">
+          <svg viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+          Retake
+        </button>
+        <button class="btn btn-primary" id="btn-use-photo">Use Photo</button>
+      </div>
+    </section>
+
+    <!-- STEP 2.5: Upload fallback (no camera) -->
+    <section class="upload-section" id="section-upload">
+      <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--text-muted)" fill="none" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <p>Camera not available. Select photos from your device instead.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-upload-front">Select Front Photo</button>
+        <button class="btn btn-ghost" id="btn-upload-back" style="display:none;">Select Back Photo</button>
+      </div>
+      <input type="file" id="upload-front-input" accept="image/*" style="display:none">
+      <input type="file" id="upload-back-input" accept="image/*" style="display:none">
+    </section>
+
+    <!-- STEP 3: Preview both sides -->
+    <section class="preview-section" id="section-preview">
+      <p class="step-label"><strong>Step 3:</strong> Review both sides</p>
+      <div class="preview-pair">
+        <div class="preview-card">
+          <img id="preview-front" alt="Front">
+          <div class="preview-card-label">Front</div>
+        </div>
+        <div class="preview-card">
+          <img id="preview-back" alt="Back">
+          <div class="preview-card-label">Back</div>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top: 8px;">
+        <button class="btn btn-primary" id="btn-create-flip">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Create .flip File
+        </button>
+        <button class="btn btn-ghost" id="btn-start-over">
+          <svg viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+          Start Over
+        </button>
+      </div>
+    </section>
+
+    <!-- STEP 4: Done -->
+    <section class="result-section" id="section-result">
+      <div class="result-icon">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="result-text">
+        <h2 id="result-filename">card.flip</h2>
+        <p id="result-info">Your .flip file is ready</p>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" id="btn-download">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download .flip
+        </button>
+        <button class="btn btn-ghost" id="btn-capture-another">
+          <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Capture Another
+        </button>
+        <a class="btn btn-ghost" href="index.html">
+          <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Open in Viewer
+        </a>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Processing overlay -->
+<div id="processing-overlay" style="display:none;position:fixed;inset:0;background:rgba(9,9,11,0.9);z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div class="spinner"></div>
+  <p style="color:var(--text-secondary);font-size:0.9rem;" id="processing-text">Creating your .flip file...</p>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// ======================================================
+//  State
+// ======================================================
+const captureState = {
+  step: 1,        // 1=front camera, 2=back camera, 3=preview, 4=done
+  frontBlob: null,
+  backBlob: null,
+  frontURL: null,
+  backURL: null,
+  flipBlob: null,
+  facingMode: 'environment',
+  stream: null,
+  frozen: false,   // true when showing a captured frame
+  capturedCanvas: null,
+};
+
+// ======================================================
+//  DOM refs
+// ======================================================
+const $ = id => document.getElementById(id);
+
+const sectionCamera  = $('section-camera');
+const sectionUpload  = $('section-upload');
+const sectionPreview = $('section-preview');
+const sectionResult  = $('section-result');
+const video          = $('video');
+const cameraLabel    = $('camera-label');
+const guideText      = $('guide-text');
+const btnShutter     = $('btn-shutter');
+const btnSwitchCam   = $('btn-switch-cam');
+const retakeBar      = $('retake-bar');
+const btnRetake      = $('btn-retake');
+const btnUsePhoto    = $('btn-use-photo');
+const btnCreateFlip  = $('btn-create-flip');
+const btnStartOver   = $('btn-start-over');
+const btnDownload    = $('btn-download');
+const btnAnother     = $('btn-capture-another');
+const previewFront   = $('preview-front');
+const previewBack    = $('preview-back');
+const processingOvl  = $('processing-overlay');
+const processingText = $('processing-text');
+const dot1 = $('dot-1'), dot2 = $('dot-2'), dot3 = $('dot-3');
+
+// Upload fallback refs
+const btnUploadFront = $('btn-upload-front');
+const btnUploadBack  = $('btn-upload-back');
+const uploadFrontIn  = $('upload-front-input');
+const uploadBackIn   = $('upload-back-input');
+
+// ======================================================
+//  Camera
+// ======================================================
+async function startCamera() {
+  try {
+    if (captureState.stream) {
+      captureState.stream.getTracks().forEach(t => t.stop());
+    }
+    captureState.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: captureState.facingMode, width: { ideal: 1920 }, height: { ideal: 1440 } },
+      audio: false,
+    });
+    video.srcObject = captureState.stream;
+    captureState.frozen = false;
+    retakeBar.style.display = 'none';
+    btnShutter.style.display = '';
+    sectionCamera.style.display = '';
+    sectionUpload.style.display = 'none';
+    return true;
+  } catch (err) {
+    console.warn('Camera not available:', err);
+    sectionCamera.style.display = 'none';
+    sectionUpload.style.display = '';
+    sectionUpload.classList.add('active');
+    return false;
+  }
+}
+
+function captureFrame() {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  captureState.capturedCanvas = canvas;
+
+  // Freeze the video by pausing
+  video.pause();
+  captureState.frozen = true;
+
+  // Show retake / use controls
+  btnShutter.style.display = 'none';
+  retakeBar.style.display = 'flex';
+}
+
+function retakePhoto() {
+  video.play();
+  captureState.frozen = false;
+  captureState.capturedCanvas = null;
+  btnShutter.style.display = '';
+  retakeBar.style.display = 'none';
+}
+
+async function useCurrentPhoto() {
+  const canvas = captureState.capturedCanvas;
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+  const url = URL.createObjectURL(blob);
+
+  if (captureState.step === 1) {
+    captureState.frontBlob = blob;
+    captureState.frontURL = url;
+    goToStep(2);
+  } else if (captureState.step === 2) {
+    captureState.backBlob = blob;
+    captureState.backURL = url;
+    goToStep(3);
+  }
+}
+
+// ======================================================
+//  Steps
+// ======================================================
+function goToStep(step) {
+  captureState.step = step;
+
+  dot1.className = 'step-dot' + (step >= 1 ? (step > 1 ? ' done' : ' active') : '');
+  dot2.className = 'step-dot' + (step >= 2 ? (step > 2 ? ' done' : ' active') : '');
+  dot3.className = 'step-dot' + (step >= 3 ? ' active' : '');
+
+  sectionCamera.style.display = 'none';
+  sectionUpload.style.display = 'none';
+  sectionPreview.style.display = 'none';
+  sectionPreview.classList.remove('active');
+  sectionResult.style.display = 'none';
+  sectionResult.classList.remove('active');
+
+  if (step === 1 || step === 2) {
+    const side = step === 1 ? 'front' : 'back';
+    cameraLabel.innerHTML = `<strong>Step ${step}:</strong> Photograph the <strong>${side}</strong>`;
+    guideText.textContent = `Align ${side} of card within the frame`;
+
+    startCamera().then(ok => {
+      if (!ok && step === 1) {
+        sectionUpload.style.display = '';
+        sectionUpload.classList.add('active');
+      } else if (!ok && step === 2) {
+        sectionUpload.style.display = '';
+        sectionUpload.classList.add('active');
+        btnUploadFront.style.display = 'none';
+        btnUploadBack.style.display = '';
+      }
+    });
+  } else if (step === 3) {
+    if (captureState.stream) {
+      captureState.stream.getTracks().forEach(t => t.stop());
+    }
+    previewFront.src = captureState.frontURL;
+    previewBack.src = captureState.backURL;
+    sectionPreview.style.display = '';
+    sectionPreview.classList.add('active');
+  } else if (step === 4) {
+    sectionResult.style.display = '';
+    sectionResult.classList.add('active');
+  }
+}
+
+function startOver() {
+  if (captureState.frontURL) URL.revokeObjectURL(captureState.frontURL);
+  if (captureState.backURL) URL.revokeObjectURL(captureState.backURL);
+  captureState.frontBlob = null;
+  captureState.backBlob = null;
+  captureState.frontURL = null;
+  captureState.backURL = null;
+  captureState.flipBlob = null;
+  captureState.frozen = false;
+  captureState.capturedCanvas = null;
+  btnUploadFront.style.display = '';
+  btnUploadBack.style.display = 'none';
+  goToStep(1);
+}
+
+// ======================================================
+//  Build .flip file in-browser
+// ======================================================
+async function createFlipFile() {
+  processingOvl.style.display = 'flex';
+  processingText.textContent = 'Processing images...';
+
+  try {
+    const frontImg = await createImageBitmap(captureState.frontBlob);
+    const backImg  = await createImageBitmap(captureState.backBlob);
+
+    // Encode both as WebP using canvas
+    processingText.textContent = 'Encoding front...';
+    const frontWebP = await encodeWebP(frontImg, 0.85);
+
+    processingText.textContent = 'Encoding back...';
+    const backWebP = await encodeWebP(backImg, 0.85);
+
+    // Thumbnail
+    processingText.textContent = 'Creating thumbnail...';
+    const thumbWebP = await encodeWebP(frontImg, 0.70, 256);
+
+    // Build manifest
+    const thumbW = Math.min(256, frontImg.width);
+    const thumbH = Math.round(frontImg.height * (thumbW / frontImg.width));
+    const now = new Date().toISOString();
+
+    const manifest = {
+      format: 'flip',
+      version: '1.0',
+      created: now,
+      generator: 'flipcapture-web/1.0',
+      object: { label: '' },
+      images: {
+        front: { file: 'front.webp', width: frontImg.width, height: frontImg.height },
+        back:  { file: 'back.webp',  width: backImg.width,  height: backImg.height },
+      },
+      crop: { method: 'none', algorithm: '' },
+      thumbnail: { file: 'thumbnail.webp', width: thumbW, height: thumbH },
+    };
+
+    // Create ZIP
+    processingText.textContent = 'Packaging .flip file...';
+    const zip = new JSZip();
+    zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+    zip.file('front.webp', frontWebP);
+    zip.file('back.webp', backWebP);
+    zip.file('thumbnail.webp', thumbWebP);
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    captureState.flipBlob = blob;
+
+    const sizeKB = (blob.size / 1024).toFixed(1);
+    $('result-filename').textContent = 'capture.flip';
+    $('result-info').textContent = `${frontImg.width}x${frontImg.height} — ${sizeKB} KB`;
+
+    goToStep(4);
+  } catch (err) {
+    console.error(err);
+    toast('Error creating .flip file', true);
+  } finally {
+    processingOvl.style.display = 'none';
+  }
+}
+
+async function encodeWebP(imgBitmap, quality, maxWidth) {
+  const canvas = document.createElement('canvas');
+  let w = imgBitmap.width, h = imgBitmap.height;
+  if (maxWidth && w > maxWidth) {
+    h = Math.round(h * (maxWidth / w));
+    w = maxWidth;
+  }
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(imgBitmap, 0, 0, w, h);
+  return new Promise(resolve => {
+    canvas.toBlob(resolve, 'image/webp', quality);
+  });
+}
+
+function downloadFlip() {
+  if (!captureState.flipBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(captureState.flipBlob);
+  a.download = 'capture.flip';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Downloaded capture.flip');
+}
+
+// ======================================================
+//  Upload fallback
+// ======================================================
+function handleUploadedFile(file, side) {
+  const url = URL.createObjectURL(file);
+  if (side === 'front') {
+    captureState.frontBlob = file;
+    captureState.frontURL = url;
+    btnUploadFront.style.display = 'none';
+    btnUploadBack.style.display = '';
+    toast('Front photo added');
+  } else {
+    captureState.backBlob = file;
+    captureState.backURL = url;
+    goToStep(3);
+  }
+}
+
+// ======================================================
+//  Toast
+// ======================================================
+function toast(msg, isError) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (isError ? ' error' : '');
+  el.textContent = msg;
+  $('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ======================================================
+//  Events
+// ======================================================
+btnShutter.addEventListener('click', captureFrame);
+btnRetake.addEventListener('click', retakePhoto);
+btnUsePhoto.addEventListener('click', useCurrentPhoto);
+btnSwitchCam.addEventListener('click', () => {
+  captureState.facingMode = captureState.facingMode === 'environment' ? 'user' : 'environment';
+  startCamera();
+});
+btnCreateFlip.addEventListener('click', createFlipFile);
+btnStartOver.addEventListener('click', startOver);
+btnDownload.addEventListener('click', downloadFlip);
+btnAnother.addEventListener('click', startOver);
+
+btnUploadFront.addEventListener('click', () => uploadFrontIn.click());
+btnUploadBack.addEventListener('click', () => uploadBackIn.click());
+uploadFrontIn.addEventListener('change', () => {
+  if (uploadFrontIn.files.length) handleUploadedFile(uploadFrontIn.files[0], 'front');
+});
+uploadBackIn.addEventListener('change', () => {
+  if (uploadBackIn.files.length) handleUploadedFile(uploadBackIn.files[0], 'back');
+});
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && captureState.step <= 2 && !captureState.frozen) {
+    e.preventDefault();
+    captureFrame();
+  }
+});
+
+// ======================================================
+//  Init
+// ======================================================
+goToStep(1);
+</script>
+</body>
+</html>

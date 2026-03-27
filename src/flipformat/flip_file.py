@@ -46,6 +46,9 @@ class FlipFile:
         self.label: str = ""
         self.crop_method: str = "none"
         self.crop_algorithm: str = ""
+        self.object_type: str = ""
+        self.size_inches: Optional[tuple] = None
+        self.size_name: str = ""
         self._created: Optional[str] = None
 
     # ------------------------------------------------------------------ #
@@ -174,6 +177,9 @@ class FlipFile:
             "generator": GENERATOR,
             "object": {
                 "label": self.label,
+                "type": self.object_type,
+                "size_name": self.size_name,
+                "size_inches": list(self.size_inches) if self.size_inches else None,
             },
             "images": {
                 "front": {
