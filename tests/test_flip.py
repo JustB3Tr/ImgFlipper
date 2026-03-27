@@ -228,7 +228,7 @@ class TestAutoCrop:
         assert f_out.size == b_out.size
 
     def test_algorithm_id_updated(self):
-        assert "v3" in ALGORITHM_ID
+        assert "v4" in ALGORITHM_ID
 
 
 # ---------------------------------------------------------------------- #

@@ -33,7 +33,7 @@ except ImportError:
 from PIL import Image
 
 
-ALGORITHM_ID = "multi_strategy_crop_v3"
+ALGORITHM_ID = "multi_strategy_crop_v4"
 
 
 # ---------------------------------------------------------------------- #
@@ -119,7 +119,7 @@ def _detect_quad_multi(cv_img: np.ndarray) -> Optional[np.ndarray]:
         quads = _find_quads_in_edges(edges, img_area)
         all_candidates.extend(quads)
 
-    # Strategy 2: Per-channel Canny (catches colored edges that gray misses)
+    # Strategy 2: Per-channel Canny
     for ch in cv2.split(cv_img):
         blurred_ch = cv2.GaussianBlur(ch, (5, 5), 0)
         edges = cv2.Canny(blurred_ch, 30, 100)
@@ -127,7 +127,7 @@ def _detect_quad_multi(cv_img: np.ndarray) -> Optional[np.ndarray]:
         quads = _find_quads_in_edges(edges, img_area)
         all_candidates.extend(quads)
 
-    # Strategy 3: CLAHE enhanced contrast (helps dark-on-dark)
+    # Strategy 3: CLAHE enhanced contrast
     for clip_limit in (2.0, 4.0, 8.0):
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
@@ -138,7 +138,7 @@ def _detect_quad_multi(cv_img: np.ndarray) -> Optional[np.ndarray]:
             quads = _find_quads_in_edges(edges, img_area)
             all_candidates.extend(quads)
 
-    # Strategy 4: Adaptive thresholding (handles uneven lighting, shadows)
+    # Strategy 4: Adaptive thresholding
     for block_size in (15, 25, 51):
         for C_val in (3, 8, 15):
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -150,13 +150,12 @@ def _detect_quad_multi(cv_img: np.ndarray) -> Optional[np.ndarray]:
             quads = _find_quads_in_edges(thresh, img_area)
             all_candidates.extend(quads)
 
-            # Also try inverted
             thresh_inv = cv2.bitwise_not(thresh)
             thresh_inv = _close_edges(thresh_inv, kernel_size=5, iterations=2)
             quads = _find_quads_in_edges(thresh_inv, img_area)
             all_candidates.extend(quads)
 
-    # Strategy 5: Saturation channel (colored cards stand out in HSV-S)
+    # Strategy 5: Saturation channel
     hsv = cv2.cvtColor(cv_img, cv2.COLOR_BGR2HSV)
     sat = hsv[:, :, 1]
     for lo, hi in [(30, 100), (50, 150)]:
@@ -188,8 +187,7 @@ def _detect_quad_multi(cv_img: np.ndarray) -> Optional[np.ndarray]:
     if not all_candidates:
         return None
 
-    # Score and pick the best
-    best = _pick_best_quad(all_candidates, w, h)
+    best = _pick_best_quad(all_candidates, cv_img, w, h)
     return best
 
 
@@ -255,12 +253,10 @@ def _is_valid_quad(corners: np.ndarray, img_area: int) -> bool:
     """Reject quads that are obviously wrong."""
     tl, tr, br, bl = corners
 
-    # Must have positive area and reasonable size
     quad_area = cv2.contourArea(corners)
-    if quad_area < img_area * 0.02 or quad_area > img_area * 0.98:
+    if quad_area < img_area * 0.02 or quad_area > img_area * 0.85:
         return False
 
-    # Check all four interior angles are between 45 and 135 degrees
     pts = [tl, tr, br, bl]
     for i in range(4):
         p0 = pts[i]
@@ -273,7 +269,6 @@ def _is_valid_quad(corners: np.ndarray, img_area: int) -> bool:
         if angle < 45 or angle > 135:
             return False
 
-    # Aspect ratio sanity: no side should be more than 6x another
     sides = [
         np.linalg.norm(tr - tl),
         np.linalg.norm(br - tr),
@@ -288,29 +283,96 @@ def _is_valid_quad(corners: np.ndarray, img_area: int) -> bool:
     return True
 
 
+def _corners_near_border(corners: np.ndarray, img_w: int, img_h: int, margin_pct: float = 0.04) -> bool:
+    """Check if most corners sit near the image border (likely the photo frame, not a card)."""
+    mx = img_w * margin_pct
+    my = img_h * margin_pct
+    near_border = 0
+    for pt in corners:
+        x, y = pt
+        if x < mx or x > img_w - mx or y < my or y > img_h - my:
+            near_border += 1
+    return near_border >= 3
+
+
+def _edge_contrast_score(cv_img: np.ndarray, corners: np.ndarray) -> float:
+    """
+    Measure actual brightness contrast across quad edges.
+    Sample pixels just inside and just outside each edge midpoint.
+    A real card edge will have a measurable brightness jump;
+    a spurious quad (photo border, wood grain) will not.
+    """
+    gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    total_diff = 0.0
+    n_samples = 0
+
+    for i in range(4):
+        p1 = corners[i]
+        p2 = corners[(i + 1) % 4]
+
+        # Sample at 20%, 50%, 80% along this edge
+        for t in (0.2, 0.5, 0.8):
+            mid = p1 + t * (p2 - p1)
+            mx_pt, my_pt = mid
+
+            # Edge normal (perpendicular direction)
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            length = math.hypot(dx, dy)
+            if length < 1:
+                continue
+            nx = -dy / length
+            ny = dx / length
+
+            # Sample 8-15 pixels inside and outside
+            diffs = []
+            for offset in (8, 12, 15):
+                ix = int(mx_pt + nx * offset)
+                iy = int(my_pt + ny * offset)
+                ox = int(mx_pt - nx * offset)
+                oy = int(my_pt - ny * offset)
+
+                if 0 <= ix < w and 0 <= iy < h and 0 <= ox < w and 0 <= oy < h:
+                    diffs.append(abs(int(gray[iy, ix]) - int(gray[oy, ox])))
+
+            if diffs:
+                total_diff += max(diffs)
+                n_samples += 1
+
+    if n_samples == 0:
+        return 0.0
+    return total_diff / n_samples
+
+
 def _pick_best_quad(
-    candidates: List[Tuple[float, np.ndarray]], img_w: int, img_h: int,
+    candidates: List[Tuple[float, np.ndarray]],
+    cv_img: np.ndarray,
+    img_w: int,
+    img_h: int,
 ) -> Optional[np.ndarray]:
     """
     Score each candidate quad and return the best one.
 
-    Scoring factors:
-      - Area (bigger is better, but not full-frame)
-      - Rectangularity (closer to 90-degree corners is better)
-      - Centrality (closer to image center is better)
-      - Aspect ratio reasonableness (card-like ratios preferred)
+    Key insight: a card in a phone photo is typically 5-50% of the frame.
+    Quads that fill >70% of the frame or hug the border are almost certainly
+    false positives (the photo frame itself, wood grain, etc).
+
+    Scoring:
+      - Edge contrast (is there a real brightness change at the quad boundary?)
+      - Rectangularity (90-degree corners)
+      - Area sweet spot (penalize too large AND too small)
+      - Centrality (cards are usually centered-ish)
+      - Border rejection (corners near image edge = bad)
     """
     img_area = img_w * img_h
     img_cx, img_cy = img_w / 2.0, img_h / 2.0
 
     best_score = -1.0
     best_quad = None
-
-    # De-duplicate very similar quads
     seen = []
 
     for area, corners in candidates:
-        # Skip near-duplicates
         is_dup = False
         for prev in seen:
             if np.max(np.abs(corners - prev)) < 15:
@@ -321,14 +383,33 @@ def _pick_best_quad(
         seen.append(corners)
 
         quad_area = cv2.contourArea(corners)
-
-        # Area score: prefer quads that are 5-85% of image area
         area_ratio = quad_area / img_area
-        if area_ratio < 0.02 or area_ratio > 0.95:
-            continue
-        area_score = min(area_ratio / 0.3, 1.0) * (1.0 - max(0, area_ratio - 0.85) * 5)
 
-        # Rectangularity: how close are all angles to 90 degrees
+        if area_ratio < 0.02 or area_ratio > 0.85:
+            continue
+
+        # Hard reject: corners hugging the image border
+        if _corners_near_border(corners, img_w, img_h, margin_pct=0.03):
+            continue
+
+        # Edge contrast: the most important signal
+        contrast = _edge_contrast_score(cv_img, corners)
+        # Normalize: 5 = faint edge, 30+ = strong edge
+        contrast_score = min(contrast / 25.0, 1.0)
+        if contrast < 3.0:
+            continue  # No real edge at all — skip
+
+        # Area: sweet spot is 5-50% of frame; heavily penalize >60%
+        if area_ratio < 0.05:
+            area_score = area_ratio / 0.05
+        elif area_ratio <= 0.50:
+            area_score = 1.0
+        elif area_ratio <= 0.70:
+            area_score = 1.0 - (area_ratio - 0.50) * 3.0
+        else:
+            area_score = 0.1
+
+        # Rectangularity
         pts = [corners[0], corners[1], corners[2], corners[3]]
         angle_penalty = 0.0
         for i in range(4):
@@ -338,32 +419,39 @@ def _pick_best_quad(
             v1 = p1 - p0
             v2 = p2 - p0
             cos_a = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
-            angle = math.degrees(math.acos(np.clip(cos_a, -1, 1)))
-            angle_penalty += abs(angle - 90)
+            ang = math.degrees(math.acos(np.clip(cos_a, -1, 1)))
+            angle_penalty += abs(ang - 90)
         rect_score = max(0, 1.0 - angle_penalty / 120.0)
 
-        # Centrality: center of quad vs center of image
+        # Centrality
         cx = np.mean(corners[:, 0])
         cy = np.mean(corners[:, 1])
         dist = math.hypot(cx - img_cx, cy - img_cy)
         max_dist = math.hypot(img_cx, img_cy)
         center_score = 1.0 - min(dist / max_dist, 1.0)
 
-        # Aspect ratio: prefer card-like ratios (1.2 to 2.0)
+        # Aspect ratio
         sides = [np.linalg.norm(corners[(i+1) % 4] - corners[i]) for i in range(4)]
         w_est = (sides[0] + sides[2]) / 2
         h_est = (sides[1] + sides[3]) / 2
         if min(w_est, h_est) < 1:
             continue
         ar = max(w_est, h_est) / min(w_est, h_est)
-        if 1.2 <= ar <= 2.0:
+        if 1.2 <= ar <= 2.2:
             ar_score = 1.0
         elif 1.0 <= ar <= 3.0:
-            ar_score = 0.7
+            ar_score = 0.6
         else:
-            ar_score = 0.3
+            ar_score = 0.2
 
-        total = (area_score * 3.0 + rect_score * 2.5 + center_score * 1.5 + ar_score * 1.0)
+        # Weighted total — edge contrast is king
+        total = (
+            contrast_score * 4.0
+            + rect_score * 2.0
+            + area_score * 2.0
+            + center_score * 1.0
+            + ar_score * 1.0
+        )
 
         if total > best_score:
             best_score = total
