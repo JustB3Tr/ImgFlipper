@@ -53,11 +53,12 @@ pip install -e .
 flip create --front photo_front.jpg --back photo_back.jpg -o my_card.flip --label "Business Card"
 ```
 
-> **Windows users:** If `flip` is not recognized, use `python -m flipformat` instead:
+> **Windows / having trouble?** Skip installation entirely and use `run.py`:
 > ```powershell
-> python -m flipformat create --front photo_front.jpg --back photo_back.jpg -o my_card.flip
+> pip install -r requirements.txt
+> python run.py create --front photo_front.jpg --back photo_back.jpg -o my_card.flip
 > ```
-> See [Troubleshooting](#troubleshooting) below for details.
+> This works on any OS, any Python version, with zero PATH hassle. See [Troubleshooting](#troubleshooting) for more options.
 
 Options:
 | Flag | Description |
@@ -158,22 +159,24 @@ See [spec/FLIP_FORMAT_SPEC.md](spec/FLIP_FORMAT_SPEC.md) for the full specificat
 
 ```
 .
+├── run.py                       # Zero-install entry point (python run.py ...)
 ├── src/flipformat/
-│   ├── __init__.py          # Package entry
-│   ├── flip_file.py         # Core FlipFile read/write class
-│   ├── autocrop.py          # Auto-crop + deskew + OCR orientation fix
-│   └── cli.py               # CLI (flip create / info / extract)
+│   ├── __init__.py
+│   ├── __main__.py              # python -m flipformat entry point
+│   ├── flip_file.py             # Core FlipFile read/write class
+│   ├── autocrop.py              # Auto-crop + deskew + OCR orientation fix
+│   └── cli.py                   # CLI (flip create / info / extract)
 ├── viewer/
-│   └── index.html           # Web-based .flip viewer
+│   └── index.html               # Web-based .flip viewer
 ├── native/
-│   ├── ios/                 # SwiftUI iOS/iPadOS viewer
+│   ├── ios/                     # SwiftUI iOS/iPadOS viewer
 │   │   └── FlipViewer/
-│   └── android/             # Jetpack Compose Android viewer
+│   └── android/                 # Jetpack Compose Android viewer
 │       └── app/
 ├── spec/
-│   └── FLIP_FORMAT_SPEC.md  # Formal format specification
+│   └── FLIP_FORMAT_SPEC.md      # Formal format specification
 ├── tests/
-│   └── test_flip.py         # Unit tests (15 passing)
+│   └── test_flip.py             # Unit tests (15 passing)
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
@@ -193,27 +196,39 @@ See [spec/FLIP_FORMAT_SPEC.md](spec/FLIP_FORMAT_SPEC.md) for the full specificat
 
 ## Troubleshooting
 
-### `flip` is not recognized (Windows)
+### `flip` not recognized / `No module named flipformat.__main__`
 
-When you run `pip install -e .`, it creates a `flip.exe` inside Python's `Scripts\` folder. If that folder isn't on your system PATH, Windows won't find the command.
+There are three ways to run the tool. If one doesn't work, try the next:
 
-**Option A — Use `python -m flipformat` (easiest, always works):**
+**Option 1 — `run.py` (simplest, no install needed):**
 
-Every command that works with `flip` also works with `python -m flipformat`:
+Just install the dependencies, then use `run.py` directly from the project folder:
 
 ```powershell
-python -m flipformat create --front front.jpg --back back.jpg -o card.flip
-python -m flipformat info card.flip
-python -m flipformat extract card.flip --outdir ./out
+pip install -r requirements.txt
+python run.py create --front front.jpg --back back.jpg -o card.flip
+python run.py info card.flip
+python run.py extract card.flip --outdir ./out
 ```
 
-**Option B — Add Python Scripts to your PATH (permanent fix):**
+This works on every OS and every Python version because it doesn't rely on `pip install` or PATH.
+
+**Option 2 — `python -m flipformat` (requires reinstall after pulling):**
+
+If you previously ran `pip install -e .` and then pulled new code, you need to **reinstall** for the `__main__.py` entry point to be registered:
+
+```powershell
+pip install -e .
+python -m flipformat create --front front.jpg --back back.jpg -o card.flip
+```
+
+**Option 3 — Add Python Scripts to your PATH (makes `flip` work directly):**
 
 1. Find where pip installed the script:
    ```powershell
    python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
    ```
-2. Copy that path (e.g. `C:\Users\You\AppData\Local\Programs\Python\Python312\Scripts`)
+2. Copy that path (e.g. `C:\Users\You\AppData\Local\Programs\Python\Python314\Scripts`)
 3. Open **Start > "Edit the system environment variables" > Environment Variables**
 4. Under **User variables**, select `Path`, click **Edit**, click **New**, paste the path
 5. Click **OK** on all dialogs, then **restart your terminal**
@@ -228,8 +243,8 @@ If you get `TesseractNotFoundError`, the Tesseract OCR engine isn't installed or
 - **Linux:** `sudo apt install tesseract-ocr`
 
 Alternatively, skip OCR with `--no-ocr`:
-```bash
-python -m flipformat create --front front.jpg --back back.jpg -o card.flip --no-ocr
+```powershell
+python run.py create --front front.jpg --back back.jpg -o card.flip --no-ocr
 ```
 
 ## Roadmap
