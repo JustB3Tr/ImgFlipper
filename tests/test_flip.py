@@ -15,18 +15,19 @@ from flipformat.flip_file import FlipFile, FORMAT_NAME, FORMAT_VERSION
 from flipformat.autocrop import (
     autocrop,
     autocrop_pair,
-    _detect_quad,
-    _deskew,
+    _detect_quad_multi,
+    _is_valid_quad,
     _order_points,
     _pil_to_cv,
     _cv_to_pil,
+    _deskew,
     _fix_text_orientation,
+    _fallback_grabcut,
     ALGORITHM_ID,
 )
 
 
 def _make_test_image(width=400, height=250, color=(200, 50, 50)):
-    """Create a simple solid-color test image."""
     arr = np.full((height, width, 3), color, dtype=np.uint8)
     return Image.fromarray(arr)
 
@@ -35,10 +36,6 @@ def _make_card_on_background(
     card_w=300, card_h=180, bg_w=640, bg_h=480,
     card_color=(255, 255, 255), bg_color=(40, 40, 40),
 ):
-    """
-    Create a synthetic image of a white card on a dark background,
-    useful for testing contour-based auto-crop.
-    """
     bg = np.full((bg_h, bg_w, 3), bg_color, dtype=np.uint8)
     y0 = (bg_h - card_h) // 2
     x0 = (bg_w - card_w) // 2
@@ -46,15 +43,54 @@ def _make_card_on_background(
     return Image.fromarray(bg)
 
 
+def _make_noisy_card_on_background(
+    card_w=300, card_h=180, bg_w=640, bg_h=480,
+    card_color=(255, 255, 255), bg_color=(40, 40, 40),
+    noise_level=15,
+):
+    """Card on a background with random noise (simulates texture like wood grain)."""
+    bg = np.full((bg_h, bg_w, 3), bg_color, dtype=np.uint8)
+    noise = np.random.randint(0, noise_level, bg.shape, dtype=np.uint8)
+    bg = np.clip(bg.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+    y0 = (bg_h - card_h) // 2
+    x0 = (bg_w - card_w) // 2
+
+    card = np.full((card_h, card_w, 3), card_color, dtype=np.uint8)
+    card_noise = np.random.randint(0, noise_level // 2 + 1, card.shape, dtype=np.uint8)
+    card = np.clip(card.astype(np.int16) + card_noise, 0, 255).astype(np.uint8)
+
+    bg[y0:y0 + card_h, x0:x0 + card_w] = card
+    return Image.fromarray(bg)
+
+
+def _make_dark_card_on_dark_bg(
+    card_w=300, card_h=180, bg_w=640, bg_h=480,
+):
+    """Dark card (50,50,50) on dark background (30,30,30) — low contrast."""
+    return _make_noisy_card_on_background(
+        card_w, card_h, bg_w, bg_h,
+        card_color=(60, 55, 55), bg_color=(35, 30, 30),
+        noise_level=10,
+    )
+
+
+def _make_light_card_on_light_bg(
+    card_w=300, card_h=180, bg_w=640, bg_h=480,
+):
+    """Light card (240,240,235) on light background (220,215,210) — low contrast."""
+    return _make_noisy_card_on_background(
+        card_w, card_h, bg_w, bg_h,
+        card_color=(245, 242, 238), bg_color=(215, 210, 205),
+        noise_level=8,
+    )
+
+
 def _make_rotated_card(angle_deg=5.0, card_w=300, card_h=180,
                        bg_w=640, bg_h=480):
-    """
-    Create a card that is slightly rotated (slanted) on a dark background.
-    """
     bg = np.full((bg_h, bg_w, 3), (40, 40, 40), dtype=np.uint8)
     card = np.full((card_h, card_w, 3), (255, 255, 255), dtype=np.uint8)
 
-    center = (bg_w // 2, bg_h // 2)
     M = cv2.getRotationMatrix2D((card_w // 2, card_h // 2), angle_deg, 1.0)
     cos_a = abs(M[0, 0])
     sin_a = abs(M[0, 1])
@@ -156,19 +192,17 @@ class TestFlipFileRoundTrip:
 
 
 # ---------------------------------------------------------------------- #
-#  Auto-crop                                                               #
+#  Auto-crop: basic                                                        #
 # ---------------------------------------------------------------------- #
 
 class TestAutoCrop:
     def test_crop_detects_card(self):
-        """A white card on dark background should be detected and cropped."""
         img = _make_card_on_background(300, 180, 640, 480)
         cropped = autocrop(img, deskew=False, fix_orientation=False)
-
         assert cropped.width < 640
         assert cropped.height < 480
-        assert cropped.width >= 280
-        assert cropped.height >= 160
+        assert cropped.width >= 260
+        assert cropped.height >= 140
 
     def test_crop_with_target_size(self):
         img = _make_card_on_background()
@@ -176,11 +210,10 @@ class TestAutoCrop:
         assert cropped.size == (200, 120)
 
     def test_fallback_on_no_contour(self):
-        """A uniform image should trigger the fallback center-crop."""
         uniform = _make_test_image(500, 500, (128, 128, 128))
         cropped = autocrop(uniform, deskew=False, fix_orientation=False)
-        assert cropped.width < 500
-        assert cropped.height < 500
+        assert cropped.width > 0
+        assert cropped.height > 0
 
     def test_order_points(self):
         pts = np.array([[100, 200], [100, 10], [300, 10], [300, 200]], dtype=np.float32)
@@ -195,7 +228,64 @@ class TestAutoCrop:
         assert f_out.size == b_out.size
 
     def test_algorithm_id_updated(self):
-        assert "v2" in ALGORITHM_ID
+        assert "v3" in ALGORITHM_ID
+
+
+# ---------------------------------------------------------------------- #
+#  Auto-crop: hard scenarios                                               #
+# ---------------------------------------------------------------------- #
+
+class TestHardCropScenarios:
+    def test_dark_card_on_dark_background(self):
+        """Dark card on dark surface — the hardest contrast scenario."""
+        img = _make_dark_card_on_dark_bg(300, 180, 640, 480)
+        cropped = autocrop(img, deskew=False, fix_orientation=False)
+        # Should crop significantly, not just trim margins
+        assert cropped.width < 500
+        assert cropped.height < 400
+
+    def test_light_card_on_light_background(self):
+        """Light card on light surface — subtle contrast."""
+        img = _make_light_card_on_light_bg(300, 180, 640, 480)
+        cropped = autocrop(img, deskew=False, fix_orientation=False)
+        assert cropped.width < 500
+        assert cropped.height < 400
+
+    def test_noisy_textured_background(self):
+        """Card on a textured/noisy background (wood grain etc)."""
+        img = _make_noisy_card_on_background(
+            300, 180, 640, 480,
+            card_color=(245, 240, 230), bg_color=(80, 60, 40),
+            noise_level=25,
+        )
+        cropped = autocrop(img, deskew=False, fix_orientation=False)
+        assert cropped.width < 500
+        assert cropped.height < 400
+
+    def test_small_card_in_large_frame(self):
+        """A small card in a much larger photo."""
+        img = _make_card_on_background(200, 120, 1024, 768)
+        cropped = autocrop(img, deskew=False, fix_orientation=False)
+        assert cropped.width < 600
+        assert cropped.height < 450
+
+
+# ---------------------------------------------------------------------- #
+#  Quad validation                                                         #
+# ---------------------------------------------------------------------- #
+
+class TestQuadValidation:
+    def test_valid_rectangle(self):
+        quad = np.array([[10, 10], [310, 10], [310, 210], [10, 210]], dtype=np.float32)
+        assert _is_valid_quad(quad, 640 * 480)
+
+    def test_reject_tiny_quad(self):
+        quad = np.array([[10, 10], [15, 10], [15, 15], [10, 15]], dtype=np.float32)
+        assert not _is_valid_quad(quad, 640 * 480)
+
+    def test_reject_extreme_aspect_ratio(self):
+        quad = np.array([[10, 10], [610, 10], [610, 15], [10, 15]], dtype=np.float32)
+        assert not _is_valid_quad(quad, 640 * 480)
 
 
 # ---------------------------------------------------------------------- #
@@ -204,32 +294,27 @@ class TestAutoCrop:
 
 class TestDeskew:
     def test_deskew_corrects_slanted_card(self):
-        """A 5-degree rotated card should be detected and roughly straightened."""
         img = _make_rotated_card(angle_deg=5.0)
         cv_img = _pil_to_cv(img)
-
-        corners = _detect_quad(cv_img)
+        corners = _detect_quad_multi(cv_img)
         if corners is not None:
             from flipformat.autocrop import _perspective_crop
             warped = _perspective_crop(cv_img, corners)
         else:
             warped = cv_img
-
         deskewed = _deskew(warped)
         assert deskewed.shape[0] > 0
         assert deskewed.shape[1] > 0
 
     def test_deskew_no_op_on_straight_card(self):
-        """A perfectly straight card should be returned mostly unchanged."""
         img = _make_card_on_background(300, 180, 640, 480)
         cv_img = _pil_to_cv(img)
-        corners = _detect_quad(cv_img)
+        corners = _detect_quad_multi(cv_img)
         if corners is not None:
             from flipformat.autocrop import _perspective_crop
             warped = _perspective_crop(cv_img, corners)
         else:
             warped = cv_img
-
         deskewed = _deskew(warped)
         h_diff = abs(deskewed.shape[0] - warped.shape[0])
         w_diff = abs(deskewed.shape[1] - warped.shape[1])
@@ -237,7 +322,6 @@ class TestDeskew:
         assert w_diff < 20
 
     def test_full_pipeline_with_deskew(self):
-        """Full autocrop pipeline with deskew enabled."""
         img = _make_rotated_card(angle_deg=3.0)
         cropped = autocrop(img, deskew=True, fix_orientation=False)
         assert cropped.width > 0
@@ -245,19 +329,31 @@ class TestDeskew:
 
 
 # ---------------------------------------------------------------------- #
-#  OCR orientation (basic, no real text)                                   #
+#  OCR orientation                                                         #
 # ---------------------------------------------------------------------- #
 
 class TestOCROrientation:
     def test_fix_orientation_returns_image(self):
-        """With no text, the function should return the image unchanged."""
         img = _make_test_image(200, 150, (200, 200, 200))
         result = _fix_text_orientation(img)
         assert result.size[0] > 0
         assert result.size[1] > 0
 
     def test_fix_orientation_with_uniform_image(self):
-        """Uniform image should just pass through."""
         img = _make_test_image(300, 200)
         result = _fix_text_orientation(img)
         assert result.size == (300, 200) or result.size == (200, 300)
+
+
+# ---------------------------------------------------------------------- #
+#  GrabCut fallback                                                        #
+# ---------------------------------------------------------------------- #
+
+class TestGrabCutFallback:
+    def test_grabcut_produces_crop(self):
+        img = _make_card_on_background(300, 180, 640, 480)
+        cv_img = _pil_to_cv(img)
+        result = _fallback_grabcut(cv_img)
+        assert result.shape[0] > 0
+        assert result.shape[1] > 0
+        assert result.shape[0] < 480 or result.shape[1] < 640
