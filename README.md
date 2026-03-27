@@ -16,6 +16,7 @@
         ▼                     ▼
   ┌──────────────────────────────────┐
   │  Auto-crop + deskew + OCR fix   │
+  │  + auto-label + size detection  │
   └──────────────┬───────────────────┘
                  │
                  ▼
@@ -23,21 +24,13 @@
           │  card.flip  │  (single file)
           └────────────┘
                  │
-      ┌──────────┼──────────┐
-      ▼          ▼          ▼
-  ┌────────┐ ┌────────┐ ┌────────┐
-  │  Web   │ │  iOS   │ │Android │
-  │ Viewer │ │ Viewer │ │ Viewer │
-  └────────┘ └────────┘ └────────┘
+    ┌────────┬───┼───┬────────┐
+    ▼        ▼   ▼   ▼        ▼
+ ┌──────┐┌──────┐┌──────┐┌──────┐┌──────┐
+ │ Web  ││Capture││ iOS  ││Droid ││ Desk │
+ │Viewer││ Mode  ││ App  ││ App  ││ App  │
+ └──────┘└──────┘└──────┘└──────┘└──────┘
 ```
-
-1. **Take two photos** — front and back of a card, paper, document.
-2. **Run the CLI** — the tool auto-detects edges, crops, corrects perspective & slant, fixes text orientation via OCR, and merges both images into one `.flip` file.
-3. **Open in any viewer** — web, iOS, or Android viewers let you flip between front and back with smooth 3D animations.
-
-## Is `.flip` really a single file?
-
-**Yes.** A `.flip` file appears as `card.flip` on your phone, computer, or any file manager. It is **not** a folder. The internal structure uses ZIP compression (the same technique `.docx`, `.epub`, and `.ipa` use), but to the user it's a single, self-contained file. Upload it, share it, AirDrop it — one file, both sides.
 
 ## Quick Start
 
@@ -50,107 +43,108 @@ pip install -e .
 ### Create a `.flip` File
 
 ```bash
-flip create --front photo_front.jpg --back photo_back.jpg -o my_card.flip --label "Business Card"
+python run.py create --front photo_front.jpg --back photo_back.jpg -o my_card.flip
 ```
 
-> **Windows / having trouble?** Skip installation entirely and use `run.py`:
-> ```powershell
-> pip install -r requirements.txt
-> python run.py create --front photo_front.jpg --back photo_back.jpg -o my_card.flip
-> ```
-> This works on any OS, any Python version, with zero PATH hassle. See [Troubleshooting](#troubleshooting) for more options.
+The tool automatically: crops the card from the background, straightens any slant, fixes text orientation, picks a label from the card text, and detects the object type and size.
 
-Options:
+> **Windows:** Use `python run.py` instead of `flip`. See [Troubleshooting](#troubleshooting).
+
+### Batch Process a Folder
+
+```bash
+python run.py batch ./photos/ -o ./flip_files/
+```
+
+Pairs images by `_front`/`_back` naming (e.g. `card1_front.jpg` + `card1_back.jpg`) or processes every two files as a pair.
+
+### View in Browser
+
+Open `viewer/index.html` — drop a `.flip` file onto it.
+
+### Capture Mode
+
+Open `viewer/capture.html` on your phone — guided camera flow to photograph front and back, produces a `.flip` file entirely in-browser.
+
+## CLI Reference
+
+| Command | Description |
+|---|---|
+| `python run.py create -f front.jpg -b back.jpg -o card.flip` | Create from two images |
+| `python run.py batch ./dir/ -o ./out/` | Batch process a directory of pairs |
+| `python run.py info card.flip` | Show manifest metadata |
+| `python run.py extract card.flip -d ./out` | Extract archive contents |
+
+### Create Options
+
 | Flag | Description |
 |---|---|
-| `--no-crop` | Skip auto-crop (if images are already cropped) |
-| `--no-deskew` | Skip slant/skew correction |
-| `--no-ocr` | Skip OCR-based orientation fix |
+| `--label "..."` | Manual label (otherwise auto-detected from OCR) |
+| `--no-crop` | Skip auto-crop |
+| `--no-deskew` | Skip slant correction |
+| `--no-ocr` | Skip OCR orientation fix |
 | `--quality 90` | WebP quality (default: 85) |
-| `--label "..."` | Human-readable label stored in metadata |
-
-### Inspect a `.flip` File
-
-```bash
-flip info my_card.flip
-```
-
-### Extract Contents
-
-```bash
-flip extract my_card.flip --outdir ./extracted
-```
 
 ## Viewers
 
-### Web Viewer
+### Web Viewer + Capture (`viewer/`)
 
-Open `viewer/index.html` in any browser and drop a `.flip` file onto it.
+- **Viewer** (`index.html`): Drag-and-drop, 3D flip, gallery, metadata badges, keyboard/touch/swipe
+- **Capture** (`capture.html`): Camera UI with guide overlay, front/back flow, in-browser `.flip` creation
+- **PWA**: Installable as an app, works offline, registers `.flip` file handler
+- Single HTML files, no build step
 
-**Features:**
-- Drag-and-drop or file picker
-- Smooth 3D CSS flip animation
-- Gallery view for multiple cards
-- Touch swipe support on mobile
-- Keyboard shortcuts: `Space` to flip, `Escape` to go back, `←`/`→` for navigation
-- Fully responsive — works on phones, tablets, and desktops
-- Single HTML file, no build step
+### iOS App (`native/ios/`)
 
-### iOS Viewer (SwiftUI)
+SwiftUI app with spring-physics flip animation, drag gesture, gallery, metadata badges, `.flip` UTI registration. See [`native/ios/README.md`](native/ios/README.md).
 
-Located in `native/ios/`. See [`native/ios/README.md`](native/ios/README.md).
+### Android App (`native/android/`)
 
-**Features:**
-- Native SwiftUI with spring-physics flip animation
-- Drag gesture to flip
-- Gallery grid for multiple cards
-- **File association**: registers `.flip` as a custom UTI — tapping any `.flip` file in Files opens FlipViewer
-- Document browser support
+Jetpack Compose with Material 3, 3D flip animation, swipe gesture, gallery, metadata badges, intent filters for `.flip` files. See [`native/android/README.md`](native/android/README.md).
 
-### Android Viewer (Jetpack Compose)
+### Desktop App (`native/desktop/`)
 
-Located in `native/android/`. See [`native/android/README.md`](native/android/README.md).
+Tauri wrapper (Rust) — wraps the web viewer in a native window. ~5 MB binary, `.flip` file association on Windows/macOS. See [`native/desktop/README.md`](native/desktop/README.md).
 
-**Features:**
-- Material 3 dark theme
-- `animateFloatAsState` 3D flip with spring physics
-- Horizontal swipe gesture
-- Gallery grid
-- **Intent filter**: opening `.flip` files from any file manager launches FlipViewer
-- Supports Android 8.0+ (API 26+)
+## Smart Metadata
+
+When creating a `.flip` file, the CLI automatically:
+
+- **Auto-labels** from OCR — reads the card text and picks the most prominent line (name, title, company)
+- **Detects object type** — Card, Document, Receipt, Postcard, Photo
+- **Estimates physical size** — matches aspect ratio against standard sizes:
+
+| Detected | Size (inches) |
+|---|---|
+| Credit/ID Card | 3.375 x 2.125 |
+| Business Card | 3.5 x 2.0 |
+| Passport | 4.92 x 3.47 |
+| US Letter | 11.0 x 8.5 |
+| A4 | 11.69 x 8.27 |
+| Receipt | 3.15 x 8.0 |
+| Postcard | 5.83 x 4.13 |
+
+All metadata is stored in the manifest and displayed in the viewer UI.
 
 ## Processing Pipeline
 
-### Auto-Crop
-1. Convert to grayscale + Gaussian blur
-2. Canny edge detection
-3. Find the largest quadrilateral contour (the card/paper)
-4. Approximate corners and apply perspective warp
-5. Output a flat, rectangular crop
-6. Match dimensions across front and back
-
-### Deskew (Slant Correction)
-1. After perspective warp, run Hough line transform on edges
-2. Compute median angle of detected lines
-3. Rotate to correct slant (up to 15 degrees)
-4. Trim rotation artifacts from borders
-
-### OCR Orientation Fix
-1. Run Tesseract OCR on the cropped image
-2. Try all 4 rotations (0, 90, 180, 270) plus horizontal mirror
-3. Pick the orientation that produces the most high-confidence readable text
-4. Ensures text always reads correctly — no upside-down or mirrored cards
+1. **GrabCut segmentation** — primary detection, models card vs table color distribution
+2. **Mask refinement** — tightens GrabCut mask using brightness thresholding
+3. **Contour fallback** — multi-strategy edge detection (Canny, CLAHE, adaptive threshold, per-channel, Otsu, Laplacian)
+4. **Quad validation** — angle checks, aspect ratio bounds, border rejection, edge-contrast verification
+5. **Perspective warp** — flatten to rectangle
+6. **Deskew** — Hough line transform residual rotation correction
+7. **OCR orientation** — try all rotations, pick one where text reads correctly
+8. **Auto-label + size detection** — OCR text extraction + aspect ratio matching
 
 ## File Format
 
-A `.flip` file is a ZIP archive containing:
-
 ```
-my_card.flip
-├── manifest.json     # Metadata (format version, dimensions, crop info)
-├── front.webp        # Front-side image (WebP)
-├── back.webp         # Back-side image (WebP)
-└── thumbnail.webp    # 256px-wide thumbnail (optional)
+card.flip (single ZIP file)
+├── manifest.json     # Metadata, label, type, size, dimensions
+├── front.webp        # Front image
+├── back.webp         # Back image
+└── thumbnail.webp    # 256px preview
 ```
 
 See [spec/FLIP_FORMAT_SPEC.md](spec/FLIP_FORMAT_SPEC.md) for the full specification.
@@ -159,103 +153,49 @@ See [spec/FLIP_FORMAT_SPEC.md](spec/FLIP_FORMAT_SPEC.md) for the full specificat
 
 ```
 .
-├── run.py                       # Zero-install entry point (python run.py ...)
+├── run.py                          # Zero-install entry point
 ├── src/flipformat/
 │   ├── __init__.py
-│   ├── __main__.py              # python -m flipformat entry point
-│   ├── flip_file.py             # Core FlipFile read/write class
-│   ├── autocrop.py              # Auto-crop + deskew + OCR orientation fix
-│   └── cli.py                   # CLI (flip create / info / extract)
+│   ├── __main__.py                 # python -m flipformat
+│   ├── flip_file.py                # FlipFile reader/writer
+│   ├── autocrop.py                 # GrabCut + contour crop pipeline
+│   ├── smartmeta.py                # Auto-label, size, type detection
+│   ├── image_io.py                 # HEIC/HEIF support
+│   └── cli.py                      # CLI (create/batch/info/extract)
 ├── viewer/
-│   └── index.html               # Web-based .flip viewer
+│   ├── index.html                  # Web viewer (PWA)
+│   ├── capture.html                # Camera capture flow
+│   ├── manifest.json               # PWA manifest
+│   └── sw.js                       # Service worker (offline)
 ├── native/
-│   ├── ios/                     # SwiftUI iOS/iPadOS viewer
-│   │   └── FlipViewer/
-│   └── android/                 # Jetpack Compose Android viewer
-│       └── app/
-├── spec/
-│   └── FLIP_FORMAT_SPEC.md      # Formal format specification
-├── tests/
-│   └── test_flip.py             # Unit tests (15 passing)
+│   ├── ios/FlipViewer/             # SwiftUI iOS app
+│   ├── android/app/                # Jetpack Compose Android app
+│   └── desktop/                    # Tauri desktop app
+├── spec/FLIP_FORMAT_SPEC.md
+├── tests/test_flip.py              # 25 tests
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
-## System Requirements
-
-**Python CLI:**
-- Python 3.9+
-- OpenCV (`opencv-python-headless`)
-- Pillow
-- pytesseract + Tesseract OCR engine
-
-**iOS app:** Xcode 15+, iOS 17+, ZIPFoundation package
-
-**Android app:** Android Studio, Kotlin 1.9+, API 26+, Compose BOM 2024.02+
-
 ## Troubleshooting
 
 ### `flip` not recognized / `No module named flipformat.__main__`
 
-There are three ways to run the tool. If one doesn't work, try the next:
-
-**Option 1 — `run.py` (simplest, no install needed):**
-
-Just install the dependencies, then use `run.py` directly from the project folder:
+Use `run.py` — works on any OS without installation:
 
 ```powershell
 pip install -r requirements.txt
 python run.py create --front front.jpg --back back.jpg -o card.flip
-python run.py info card.flip
-python run.py extract card.flip --outdir ./out
 ```
 
-This works on every OS and every Python version because it doesn't rely on `pip install` or PATH.
+### Tesseract not found
 
-**Option 2 — `python -m flipformat` (requires reinstall after pulling):**
-
-If you previously ran `pip install -e .` and then pulled new code, you need to **reinstall** for the `__main__.py` entry point to be registered:
-
-```powershell
-pip install -e .
-python -m flipformat create --front front.jpg --back back.jpg -o card.flip
-```
-
-**Option 3 — Add Python Scripts to your PATH (makes `flip` work directly):**
-
-1. Find where pip installed the script:
-   ```powershell
-   python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
-   ```
-2. Copy that path (e.g. `C:\Users\You\AppData\Local\Programs\Python\Python314\Scripts`)
-3. Open **Start > "Edit the system environment variables" > Environment Variables**
-4. Under **User variables**, select `Path`, click **Edit**, click **New**, paste the path
-5. Click **OK** on all dialogs, then **restart your terminal**
-6. Now `flip create ...` will work directly
-
-### Tesseract not found (any OS)
-
-If you get `TesseractNotFoundError`, the Tesseract OCR engine isn't installed or isn't on PATH:
-
-- **Windows:** Download from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki), install, and add the install folder (e.g. `C:\Program Files\Tesseract-OCR`) to your PATH
+- **Windows:** [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki), add to PATH
 - **macOS:** `brew install tesseract`
 - **Linux:** `sudo apt install tesseract-ocr`
 
-Alternatively, skip OCR with `--no-ocr`:
-```powershell
-python run.py create --front front.jpg --back back.jpg -o card.flip --no-ocr
-```
-
-## Roadmap
-
-- [ ] Windows/macOS desktop viewer (Tauri)
-- [ ] OS-level Quick Look / preview handlers
-- [ ] Camera capture mode with guide overlay
-- [ ] Batch processing (scan a stack of cards)
-- [ ] OCR metadata extraction (read and store text from the card)
-- [ ] IANA MIME type registration (`application/flip`)
-- [ ] App Store / Play Store distribution
+Or skip OCR: `python run.py create -f front.jpg -b back.jpg -o card.flip --no-ocr`
 
 ## License
 

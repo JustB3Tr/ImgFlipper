@@ -182,6 +182,17 @@ struct CardViewerView: View {
             }
             .padding(.horizontal)
 
+            HStack(spacing: 8) {
+                if !card.objectType.isEmpty {
+                    MetaBadge(text: card.objectType)
+                }
+                if let size = card.sizeInches {
+                    MetaBadge(text: String(format: "%.1f\" x %.1f\"", size.0, size.1))
+                }
+                MetaBadge(text: "\(card.width)x\(card.height)px")
+            }
+            .padding(.horizontal)
+
             Spacer()
 
             // 3D flip card
@@ -264,5 +275,18 @@ struct CardViewerView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical)
+    }
+}
+
+struct MetaBadge: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(.systemGray6))
+            .cornerRadius(10)
     }
 }

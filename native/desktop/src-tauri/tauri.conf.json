@@ -1,0 +1,66 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "distDir": "../../viewer",
+    "devPath": "../../viewer"
+  },
+  "package": {
+    "productName": "FlipViewer",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "identifier": "com.flipformat.viewer",
+      "icon": [
+        "icons/icon.png"
+      ],
+      "targets": "all",
+      "windows": {
+        "webviewInstallMode": {
+          "type": "downloadBootstrapper"
+        }
+      },
+      "fileAssociations": [
+        {
+          "ext": ["flip"],
+          "mimeType": "application/x-flip-image",
+          "description": "Flip Dual-Sided Image",
+          "role": "Viewer"
+        }
+      ]
+    },
+    "allowlist": {
+      "all": false,
+      "dialog": {
+        "open": true,
+        "save": true
+      },
+      "fs": {
+        "readFile": true,
+        "scope": ["**"]
+      },
+      "path": {
+        "all": true
+      },
+      "shell": {
+        "open": true
+      }
+    },
+    "windows": [
+      {
+        "title": "FlipViewer",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

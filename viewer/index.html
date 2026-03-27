@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>FlipViewer</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6366f1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -515,6 +519,14 @@ main {
 .card-3d.hint-anim {
   animation: swipeHint 1.5s ease-in-out;
 }
+
+.meta-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; background: var(--surface);
+  border: 1px solid var(--border-subtle); border-radius: 14px;
+  font-size: 0.7rem; color: var(--text-muted);
+}
+.meta-badge svg { width: 12px; height: 12px; stroke: var(--text-muted); fill: none; stroke-width: 1.5; }
 </style>
 </head>
 <body>
@@ -578,6 +590,7 @@ main {
         <span class="viewer-label" id="viewer-label"></span>
         <span class="side-badge" id="side-badge">FRONT</span>
       </div>
+      <div class="viewer-meta" id="viewer-meta" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;"></div>
 
       <div class="card-scene">
         <div class="card-3d" id="card-3d">
@@ -749,7 +762,7 @@ function renderGallery() {
       <img class="gallery-card-thumb" src="${card.thumbURL}" alt="">
       <div class="gallery-card-info">
         <div class="card-label">${card.manifest.object?.label || card.fileName.replace('.flip','')}</div>
-        <div class="card-meta">${card.manifest.images.front.width} x ${card.manifest.images.front.height}</div>
+        <div class="card-meta">${card.manifest.object?.type ? card.manifest.object.type + ' — ' : ''}${card.manifest.images.front.width} x ${card.manifest.images.front.height}</div>
       </div>
     `;
     el.addEventListener('click', () => openCard(idx));
@@ -777,6 +790,22 @@ function openCard(idx) {
   viewerLabel.textContent = card.manifest.object?.label || card.fileName.replace('.flip', '');
   sideBadge.textContent = 'FRONT';
   card3d.classList.remove('flipped');
+
+  // Populate metadata badges
+  const metaEl = $('viewer-meta');
+  metaEl.innerHTML = '';
+  const obj = card.manifest.object || {};
+  if (obj.type) {
+    metaEl.innerHTML += `<span class="meta-badge"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>${obj.type}</span>`;
+  }
+  if (obj.size_inches) {
+    const [sw, sh] = obj.size_inches;
+    metaEl.innerHTML += `<span class="meta-badge"><svg viewBox="0 0 24 24"><path d="M21 3H3v18"/><path d="M21 3v18"/><path d="M3 21h18"/></svg>${sw.toFixed(1)}" x ${sh.toFixed(1)}"</span>`;
+  }
+  const dims = card.manifest.images?.front;
+  if (dims) {
+    metaEl.innerHTML += `<span class="meta-badge"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>${dims.width}x${dims.height}px</span>`;
+  }
 
   showSection('viewer');
 
@@ -874,6 +903,21 @@ card3d.addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - touchStartX;
   if (Math.abs(dx) > 50) flipCard();
 }, { passive: true });
+
+// PWA service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+// PWA file handler (when opening .flip files from OS)
+if ('launchQueue' in window) {
+  window.launchQueue.setConsumer(async launchParams => {
+    for (const fh of launchParams.files) {
+      const file = await fh.getFile();
+      handleFiles([file]);
+    }
+  });
+}
 
 // Init
 showSection('landing');

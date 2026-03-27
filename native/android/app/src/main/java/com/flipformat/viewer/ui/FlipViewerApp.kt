@@ -254,6 +254,20 @@ fun CardViewerScreen(card: FlipCard, onBack: () -> Unit) {
             }
         }
 
+        // Metadata badges
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            if (card.objectType.isNotEmpty()) {
+                MetaBadge(card.objectType)
+            }
+            if (card.sizeInchesW != null && card.sizeInchesH != null) {
+                MetaBadge("${"%.1f".format(card.sizeInchesW)}\" x ${"%.1f".format(card.sizeInchesH)}\"")
+            }
+            MetaBadge("${card.width}x${card.height}px")
+        }
+
         Spacer(Modifier.weight(1f))
 
         // Flippable card
@@ -327,6 +341,21 @@ fun CardViewerScreen(card: FlipCard, onBack: () -> Unit) {
             "Tap card or swipe to flip",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun MetaBadge(text: String) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Text(
+            text,
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
 }

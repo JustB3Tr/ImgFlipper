@@ -10,6 +10,9 @@ struct FlipCard: Identifiable {
     var width: Int
     var height: Int
     var created: String
+    var objectType: String
+    var sizeName: String
+    var sizeInches: (Double, Double)?
 }
 
 struct FlipManifest: Codable {
@@ -24,6 +27,9 @@ struct FlipManifest: Codable {
 
     struct ManifestObject: Codable {
         let label: String?
+        let type: String?
+        let size_name: String?
+        let size_inches: [Double]?
     }
 
     struct ManifestImages: Codable {
@@ -91,13 +97,19 @@ class FlipStore: ObservableObject {
         let frontImage = try extractImage(from: archive, filename: manifest.images.front.file)
         let backImage = try extractImage(from: archive, filename: manifest.images.back.file)
 
+        let sizeArr = manifest.object?.size_inches
+        let sizeInches: (Double, Double)? = (sizeArr != nil && sizeArr!.count == 2) ? (sizeArr![0], sizeArr![1]) : nil
+
         return FlipCard(
             label: manifest.object?.label ?? url.deletingPathExtension().lastPathComponent,
             frontImage: frontImage,
             backImage: backImage,
             width: manifest.images.front.width,
             height: manifest.images.front.height,
-            created: manifest.created
+            created: manifest.created,
+            objectType: manifest.object?.type ?? "",
+            sizeName: manifest.object?.size_name ?? "",
+            sizeInches: sizeInches
         )
     }
 

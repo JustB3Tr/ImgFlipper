@@ -17,6 +17,10 @@ data class FlipCard(
     val width: Int,
     val height: Int,
     val created: String,
+    val objectType: String = "",
+    val sizeName: String = "",
+    val sizeInchesW: Double? = null,
+    val sizeInchesH: Double? = null,
 )
 
 data class FlipManifest(
@@ -24,6 +28,10 @@ data class FlipManifest(
     val version: String,
     val created: String,
     val label: String,
+    val objectType: String = "",
+    val sizeName: String = "",
+    val sizeInchesW: Double? = null,
+    val sizeInchesH: Double? = null,
     val frontFile: String,
     val backFile: String,
     val frontWidth: Int,
@@ -80,6 +88,10 @@ object FlipFileParser {
             width = manifest.frontWidth,
             height = manifest.frontHeight,
             created = manifest.created,
+            objectType = manifest.objectType,
+            sizeName = manifest.sizeName,
+            sizeInchesW = manifest.sizeInchesW,
+            sizeInchesH = manifest.sizeInchesH,
         )
     }
 
@@ -88,12 +100,17 @@ object FlipFileParser {
         val images = obj.getJSONObject("images")
         val front = images.getJSONObject("front")
         val back = images.getJSONObject("back")
+        val objMeta = obj.optJSONObject("object")
 
         return FlipManifest(
             format = obj.getString("format"),
             version = obj.getString("version"),
             created = obj.optString("created", ""),
-            label = obj.optJSONObject("object")?.optString("label", "") ?: "",
+            label = objMeta?.optString("label", "") ?: "",
+            objectType = objMeta?.optString("type", "") ?: "",
+            sizeName = objMeta?.optString("size_name", "") ?: "",
+            sizeInchesW = objMeta?.optJSONArray("size_inches")?.optDouble(0),
+            sizeInchesH = objMeta?.optJSONArray("size_inches")?.optDouble(1),
             frontFile = front.getString("file"),
             backFile = back.getString("file"),
             frontWidth = front.getInt("width"),

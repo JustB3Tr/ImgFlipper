@@ -1,0 +1,17 @@
+// !$*UTF8*$!
+// Minimal Xcode project configuration for FlipViewer
+// Open this directory in Xcode and add ZIPFoundation via SPM
+{
+	archiveVersion = 1;
+	classes = { };
+	objectVersion = 56;
+	objects = {
+		3E000001 = { isa = PBXGroup; children = (3E000010, 3E000011, 3E000012, 3E000013, 3E000014); name = FlipViewer; sourceTree = "<group>"; path = FlipViewer; };
+		3E000010 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlipViewerApp.swift; sourceTree = "<group>"; };
+		3E000011 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3E000012 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlipStore.swift; sourceTree = "<group>"; };
+		3E000013 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3E000014 = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+	};
+	rootObject = 3E000001;
+}
