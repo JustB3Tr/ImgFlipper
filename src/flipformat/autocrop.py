@@ -124,15 +124,13 @@ def _fit_to_size(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
 def _detect_via_grabcut(cv_img: np.ndarray) -> Optional[np.ndarray]:
     """
     Use GrabCut to segment foreground (the card) from background (the table).
-    Then find the best-fit quadrilateral around the foreground mask.
+    Then refine the mask and fit a tight quadrilateral.
     """
     h, w = cv_img.shape[:2]
 
-    # Work at reduced resolution for speed
     work, sc = _downscale(cv_img, max_dim=512)
     wh, ww = work.shape[:2]
 
-    # Initial rect: assume card is somewhere in the middle 80%
     margin_x = max(int(ww * 0.05), 1)
     margin_y = max(int(wh * 0.05), 1)
     rect = (margin_x, margin_y, ww - 2 * margin_x, wh - 2 * margin_y)
@@ -150,17 +148,18 @@ def _detect_via_grabcut(cv_img: np.ndarray) -> Optional[np.ndarray]:
         (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0
     ).astype(np.uint8)
 
-    # Clean up the mask
+    # Refine: tighten the mask to the actual card boundary.
+    # GrabCut often includes shadows/reflections around the card.
+    fg_mask = _refine_grabcut_mask(work, fg_mask)
+
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
     fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
-    # Find contours in the foreground mask
     contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
 
-    # Pick the largest contour
     largest = max(contours, key=cv2.contourArea)
     area = cv2.contourArea(largest)
     mask_area = ww * wh
@@ -168,22 +167,69 @@ def _detect_via_grabcut(cv_img: np.ndarray) -> Optional[np.ndarray]:
     if area < mask_area * 0.03:
         return None
 
-    # Fit a minimum-area rotated rectangle
     min_rect = cv2.minAreaRect(largest)
     box = cv2.boxPoints(min_rect)
     corners = _order_points(box.astype(np.float32))
 
-    # Validate the quad
     if not _is_valid_quad(corners, mask_area):
         return None
 
-    # Scale corners back to cv_img resolution
     corners = corners * sc
-
-    # Now scale from work-of-work back to the input cv_img size
-    # (cv_img was already downscaled to 1024 before being passed here,
-    # so sc maps from 512-space back to 1024-space)
     return corners
+
+
+def _refine_grabcut_mask(work: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
+    """
+    Tighten a GrabCut foreground mask to the actual card edges.
+
+    GrabCut's mask is often too generous — it includes shadows, reflections,
+    and gradient areas around the card. This function:
+    1. Looks at the brightness distribution inside the GrabCut region
+    2. If the foreground is significantly brighter or darker than background,
+       applies a threshold to isolate just the card
+    3. Intersects with the original mask to keep it conservative
+    """
+    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+    bg_mask = cv2.bitwise_not(fg_mask)
+
+    fg_pixels = gray[fg_mask > 0]
+    bg_pixels = gray[bg_mask > 0]
+
+    if len(fg_pixels) < 50 or len(bg_pixels) < 50:
+        return fg_mask
+
+    fg_mean = float(np.mean(fg_pixels))
+    bg_mean = float(np.mean(bg_pixels))
+    diff = fg_mean - bg_mean
+
+    # Only refine if there's a meaningful brightness difference
+    if abs(diff) < 15:
+        return fg_mask
+
+    # Blur to reduce noise before thresholding
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    if diff > 0:
+        # Foreground is BRIGHTER (white card on dark table)
+        # Threshold to keep only bright pixels
+        threshold_val = bg_mean + abs(diff) * 0.4
+        _, refined = cv2.threshold(blurred, int(threshold_val), 255, cv2.THRESH_BINARY)
+    else:
+        # Foreground is DARKER (dark card on lighter surface)
+        threshold_val = bg_mean - abs(diff) * 0.4
+        _, refined = cv2.threshold(blurred, int(threshold_val), 255, cv2.THRESH_BINARY_INV)
+
+    # Intersect with original GrabCut mask to stay conservative
+    refined = cv2.bitwise_and(refined, fg_mask)
+
+    # Check that refinement didn't destroy the mask
+    refined_area = cv2.countNonZero(refined)
+    original_area = cv2.countNonZero(fg_mask)
+
+    if refined_area < original_area * 0.20:
+        return fg_mask
+
+    return refined
 
 
 # ---------------------------------------------------------------------- #
