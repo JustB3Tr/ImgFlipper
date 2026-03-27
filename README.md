@@ -53,6 +53,12 @@ pip install -e .
 flip create --front photo_front.jpg --back photo_back.jpg -o my_card.flip --label "Business Card"
 ```
 
+> **Windows users:** If `flip` is not recognized, use `python -m flipformat` instead:
+> ```powershell
+> python -m flipformat create --front photo_front.jpg --back photo_back.jpg -o my_card.flip
+> ```
+> See [Troubleshooting](#troubleshooting) below for details.
+
 Options:
 | Flag | Description |
 |---|---|
@@ -184,6 +190,47 @@ See [spec/FLIP_FORMAT_SPEC.md](spec/FLIP_FORMAT_SPEC.md) for the full specificat
 **iOS app:** Xcode 15+, iOS 17+, ZIPFoundation package
 
 **Android app:** Android Studio, Kotlin 1.9+, API 26+, Compose BOM 2024.02+
+
+## Troubleshooting
+
+### `flip` is not recognized (Windows)
+
+When you run `pip install -e .`, it creates a `flip.exe` inside Python's `Scripts\` folder. If that folder isn't on your system PATH, Windows won't find the command.
+
+**Option A — Use `python -m flipformat` (easiest, always works):**
+
+Every command that works with `flip` also works with `python -m flipformat`:
+
+```powershell
+python -m flipformat create --front front.jpg --back back.jpg -o card.flip
+python -m flipformat info card.flip
+python -m flipformat extract card.flip --outdir ./out
+```
+
+**Option B — Add Python Scripts to your PATH (permanent fix):**
+
+1. Find where pip installed the script:
+   ```powershell
+   python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+   ```
+2. Copy that path (e.g. `C:\Users\You\AppData\Local\Programs\Python\Python312\Scripts`)
+3. Open **Start > "Edit the system environment variables" > Environment Variables**
+4. Under **User variables**, select `Path`, click **Edit**, click **New**, paste the path
+5. Click **OK** on all dialogs, then **restart your terminal**
+6. Now `flip create ...` will work directly
+
+### Tesseract not found (any OS)
+
+If you get `TesseractNotFoundError`, the Tesseract OCR engine isn't installed or isn't on PATH:
+
+- **Windows:** Download from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki), install, and add the install folder (e.g. `C:\Program Files\Tesseract-OCR`) to your PATH
+- **macOS:** `brew install tesseract`
+- **Linux:** `sudo apt install tesseract-ocr`
+
+Alternatively, skip OCR with `--no-ocr`:
+```bash
+python -m flipformat create --front front.jpg --back back.jpg -o card.flip --no-ocr
+```
 
 ## Roadmap
 

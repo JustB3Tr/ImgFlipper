@@ -1,8 +1,12 @@
 """
 Command-line interface for flipformat.
 
+Can be invoked two ways:
+    flip <command>                  (if Scripts/ is on PATH)
+    python -m flipformat <command>  (always works)
+
 Usage:
-    flip create  --front photo_front.jpg --back photo_back.jpg -o card.flip [--no-crop] [--no-deskew] [--no-ocr] [--label "My Card"]
+    flip create  --front photo_front.jpg --back photo_back.jpg -o card.flip
     flip info     card.flip
     flip extract  card.flip --outdir ./out
 """
@@ -76,7 +80,9 @@ def cmd_extract(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="flip",
-        description="Create and inspect .flip dual-sided image files.",
+        description="Create and inspect .flip dual-sided image files.\n\n"
+                    "If 'flip' is not recognized, use:  python -m flipformat <command>",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command")
 
