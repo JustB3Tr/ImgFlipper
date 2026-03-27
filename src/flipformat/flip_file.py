@@ -139,13 +139,15 @@ class FlipFile:
             return src.copy(), hashlib.sha256(raw_bytes).hexdigest()
 
         if isinstance(src, (str, Path)):
+            from flipformat.image_io import open_image
             raw_bytes = Path(src).read_bytes()
-            img = Image.open(io.BytesIO(raw_bytes))
+            img = open_image(raw_bytes)
             img = _apply_exif_orientation(img)
             return img, hashlib.sha256(raw_bytes).hexdigest()
 
         if isinstance(src, bytes):
-            img = Image.open(io.BytesIO(src))
+            from flipformat.image_io import open_image
+            img = open_image(src)
             img = _apply_exif_orientation(img)
             return img, hashlib.sha256(src).hexdigest()
 

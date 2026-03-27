@@ -54,7 +54,7 @@ my_card.flip
   },
   "crop": {
     "method": "auto",
-    "algorithm": "contour_detection_v1"
+    "algorithm": "contour_deskew_ocr_v2"
   },
   "thumbnail": {
     "file": "thumbnail.webp",
@@ -81,7 +81,7 @@ my_card.flip
 | `images.front.original_hash_sha256` | string | No | SHA-256 of original uncropped source |
 | `images.back.*` | — | Yes | Same schema as front |
 | `crop.method` | string | No | `"auto"`, `"manual"`, or `"none"` |
-| `crop.algorithm` | string | No | Algorithm identifier |
+| `crop.algorithm` | string | No | Algorithm identifier (e.g. `contour_deskew_ocr_v2`) |
 | `thumbnail.file` | string | No | Filename of thumbnail |
 | `thumbnail.width` | int | No | Thumbnail pixel width |
 | `thumbnail.height` | int | No | Thumbnail pixel height |
@@ -111,6 +111,17 @@ The ZIP container uses DEFLATE. Since WebP is already compressed, images are sto
 ## Versioning
 
 Viewers MUST check the `version` field. If the major version exceeds what the viewer supports, it SHOULD warn the user. Minor version bumps are backward-compatible.
+
+## Processing Algorithms
+
+The `crop.algorithm` field identifies the processing pipeline used. Current algorithms:
+
+| Algorithm ID | Description |
+|---|---|
+| `contour_detection_v1` | Canny edges + contour detection + perspective warp |
+| `contour_deskew_ocr_v2` | v1 + Hough line deskew + OCR-based orientation fix |
+
+Viewers do not need to understand the algorithm — it is purely informational metadata.
 
 ## Security
 
